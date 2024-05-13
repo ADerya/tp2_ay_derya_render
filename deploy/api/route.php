@@ -17,6 +17,3 @@
 
 	// APi d'authentification générant un JWT
 	$app->post('/api/utilisateur/login', 'postLogin');
-	
-	
-
