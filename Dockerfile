@@ -22,15 +22,10 @@ RUN curl -sSk https://getcomposer.org/installer | php -- --disable-tls && \
     libpq-dev \
     unzip \
     zip 
-RUN apt-get update && apt-get install -y \
-    libpq-dev \
-    && docker-php-ext-install pdo pdo_pgsql \
-    && apt-get clean
-
-RUN a2enmod rewrite headers \
+RUN rm -rf /var/lib/apt/lists/* \
+ && a2enmod rewrite headers \
  && docker-php-ext-configure pgsql -with-pgsql=/usr/local/pgsql \
  && docker-php-ext-install pdo pdo_pgsql \
- && mkdir ./src \
  && composer install --prefer-dist \
  && composer dump-autoload --optimize \
  && composer update
