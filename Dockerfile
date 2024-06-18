@@ -21,19 +21,18 @@ RUN curl -sSk https://getcomposer.org/installer | php -- --disable-tls && \
     libzip-dev \
     libpq-dev \
     unzip \
-    zip 
-RUN rm -rf /var/lib/apt/lists/* \
+    zip \
+ && rm -rf /var/lib/apt/lists/* \
  && a2enmod rewrite headers \
  && docker-php-ext-configure pgsql -with-pgsql=/usr/local/pgsql \
  && docker-php-ext-install pdo pdo_pgsql \
  && mkdir ./src \
  && composer install --prefer-dist \
  && composer dump-autoload --optimize \
+ && composer update \
+ && php vendor/bin/doctrine orm:convert-mapping --namespace="" --force --from-database yml ./config/yaml \
+ && php vendor/bin/doctrine orm:generate-entities --generate-annotations=false --update-entities=true --generate-methods=false ./src \
  && composer update
- 
-RUN php vendor/bin/doctrine orm:convert-mapping --namespace="" --force --from-database yml ./config/yaml 
-RUN php vendor/bin/doctrine orm:generate-entities --generate-annotations=false --update-entities=true --generate-methods=false ./src 
-RUN composer dump-autoload  --optimize -v
 
 # Exposer le port 80 pour permettre les connexions entrantes
 EXPOSE 80
