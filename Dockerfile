@@ -22,8 +22,8 @@ RUN curl -sSk https://getcomposer.org/installer | php -- --disable-tls && \
     libpq-dev \
     unzip \
     zip 
-RUN rm -rf /var/lib/apt/lists/* \
- && a2enmod rewrite headers \
+RUN rm -rf /var/lib/apt/lists/*
+RUN a2enmod rewrite headers \
  && docker-php-ext-configure pgsql -with-pgsql=/usr/local/pgsql \
  && docker-php-ext-install pdo pdo_pgsql \
  && composer install --prefer-dist \
