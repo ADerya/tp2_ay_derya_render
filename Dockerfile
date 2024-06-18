@@ -26,6 +26,7 @@ RUN rm -rf /var/lib/apt/lists/*
 RUN a2enmod rewrite headers
 RUN docker-php-ext-configure pgsql -with-pgsql=/usr/local/pgsql
 RUN docker-php-ext-install pdo pdo_pgsql
+RUN mkdir ./src
 RUN composer dump-autoload --optimize
 RUN composer update
  
