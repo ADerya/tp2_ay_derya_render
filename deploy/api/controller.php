@@ -5,7 +5,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 	function optionsCatalogue (Request $request, Response $response, $args) {
 	    
 	    // Evite que le front demande une confirmation à chaque modification
-	    $response = $response->withHeader("Access-Control-Max-Age", 600);
+	    $response = $response->withHeader("Access-Control-Max-Age", '*');
 	    
 	    return addHeaders ($response);
 	}
@@ -17,45 +17,93 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 	    return $response;
 	}
 	
-	function  getSearchCalatogue (Request $request, Response $response, $args) {
-		$flux = json_decode(file_get_contents("./assets/mock/products.json"), true);
-		$fluxFilter = array_filter($flux, function ($item) use ($args) {
-			return strpos(strtolower($item['name']), strtolower($args['filtre'])) !== false;
-		  });
-		
-		  $fluxFilter = array_values($fluxFilter);
-		
-		  $jsonData = json_encode($fluxFilter);
-		  $response = $response->withHeader('Content-Type', 'application/json');
-		  $response->getBody()->write($jsonData);
-		
-		  return addHeaders($response);
+	function getSearchCalatogue(Request $request, Response $response) {
+		global $entityManager;
+		$parameters = $request->getQueryParams();
+		$search = $parameters['search'] ?? null;
+		$category = $parameters['category'] ?? null;
+	
+		$qb = $entityManager->createQueryBuilder();
+		$qb->select('p')
+			->from('Product', 'p');
+	
+		if ($search) {
+			$term = strtolower($search);
+			$qb->andWhere($qb->expr()->orX(
+				$qb->expr()->like('LOWER(p.name)', ':filtre'),
+				$qb->expr()->like('LOWER(p.description)', ':filtre')
+			))
+			->setParameter('filtre', '%' . $term . '%');
+		}
+	
+		if ($category) {
+			$qb->andWhere('p.category = :category')
+				->setParameter('category', $category);
+		}
+	
+		$query = $qb->getQuery();
+		$produits = $query->getResult();
+	
+		if (!empty($produits)) {
+			$data = [];
+			foreach ($produits as $produit) {
+				$data[] = [
+					'id' => $produit->getId(),
+					'name' => $produit->getName(),
+					'price' => $produit->getPrice(),
+					'category' => $produit->getCategory(), 
+					'description' => $produit->getDescription(),
+					'image' => $produit->getImage()
+				];
+			}
+	
+			$response = addHeaders($response); 
+			$response = createJwT($response); 
+	
+			$response->getBody()->write(json_encode($data));
+		} else {
+			// Aucun produit trouvé, retourner une réponse 404
+			$response = $response->withStatus(404);
+			$response->getBody()->write(json_encode(['message' => 'Aucun produit trouvé']));
+		}
+	
+		return addHeaders($response);
 	}
+	
 
 	// API Nécessitant un Jwt valide
 	function getCatalogue (Request $request, Response $response, $args) {
 
-        $path = "./assets/mock/products.json";
+        global $entityManager;
+		$playload = getJWTToken($request);
+		$login = $playload->userid;
 
-        if (file_exists($path)) {
-            $jsonContent = file_get_contents($path);
 
-            $data = json_decode(
-            $jsonContent,
-            true
-        );
+		$userRepository = $entityManager->getRepository('Utilisateurs');
+		$user = $userRepository->findOneBy(array('login' => $login));
 
-        if ($data !== null) {
-            $jsonData = json_encode($data);
-      
-            $response = $response->withHeader('Content-Type', 'application/json');
-      
-            $response->getBody()->write($jsonData);
-      
-            return $response;
-          }
-        }
-        return $response->withStatus(500)->getBody()->write("Erreur lors de la récupération du catalogue.");
+		if ($user) {
+			$produits = $entityManager->getRepository('Product')->findAll();
+			$data = [];
+			foreach ($produits as $produit) {
+				$data[] = [
+					'id' => $produit->getId(),
+					'name' => $produit->getName(),
+					'price' => $produit->getPrice(),
+					'category' => $produit->getCategory(),
+					'description' => $produit->getDescription(),
+					'image' => $produit->getImage()
+				];
+			}
+			$response = addHeaders($response);
+			$response = createJwT($response);
+			$response->getBody()->write(json_encode($data));
+		} else {
+			$response = $response->withStatus(404);
+			$response->getBody()->write(json_encode(['message' => 'Aucun produit trouvé']));
+		}
+
+		return addHeaders($response);
     }
 
 	function optionsUtilisateur (Request $request, Response $response, $args) {
@@ -104,8 +152,8 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 	    }
 	    if (!$err) {
 		$userRepository = $entityManager->getRepository('Utilisateurs');
-		$user = $userRepository->findOneBy(array('login' => $login, 'pass' => $pass));
-		if ($user and $login == $user->getLogin() and $pass == $user->getPass()) {
+		$user = $userRepository->findOneBy(array('login' => $login, 'password' => $pass));
+		if ($user and $login == $user->getLogin() and $pass == $user->getPassword()) {
 		    $response = addHeaders ($response);
 		    $response = createJwT ($response);
 		    $data = array('nom' => $user->getNom(), 'prenom' => $user->getPrenom());
@@ -121,9 +169,9 @@ use Psr\Http\Message\ServerRequestInterface as Request;
     }
 
 	// APi d'authentification générant un JWT
-	function postSignup (Request $request, Response $response, $args) {
+	function postSignup (Request $request, Response $response) {
 	    global $entityManager;
-		$erreur= [];
+		$erreur=[];
 	    $err=false;
 		// Récupération du body de la requête
 		$bodyRequest = $request->getBody();
@@ -185,9 +233,9 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 				array_push($erreur, "Login déjà utilisé");
 				$response = $response->withStatus(409); //Set response status to 409 (Conflict)
 				$response->getBody()->write(json_encode($erreur));
+				array_push($erreur, "Login déjà utilisé. Veuillez en choisir un autre.");
 			}
 			else {
-				$hashedPassword = password_hash($pass, PASSWORD_DEFAULT);
 				// Création d'un nouvel utilisateur
 				$user = new Utilisateurs();
 				$user->setNom($nom);
@@ -200,11 +248,11 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 				$user->setCodePostal($cp);
 				$user->setPays($pays);
 				$user->setLogin($login);
-				$user->setPass($pass);
+				$user->setPassword($pass);
 				$entityManager->persist($user);
 				$entityManager->flush();
-				$response = addHeaders ($response);
-				$response = createJwT ($response);
+				$response = addHeaders($response);
+				$response = createJwT($response);
 				$data = array('nom' => $user->getNom(), 'prenom' => $user->getPrenom(), 'id' => $user->getId());
 				$response->getBody()->write(json_encode($data));
 			}
